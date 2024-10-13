@@ -52,8 +52,27 @@ func (t *Table) analyzeAndStringifyColumn(colIdx int, col interface{}, hint rend
 func (t *Table) extractMaxColumnLengths(rows []rowStr, hint renderHint) {
 	for rowIdx, row := range rows {
 		hint.rowNumber = rowIdx + 1
+
+		if t.getRowConfig(hint).AutoMerge && t.allStringsInRowEqual(row) {
+			continue
+		}
+		
 		t.extractMaxColumnLengthsFromRow(row, t.getMergedColumnIndices(row, hint))
 	}
+}
+
+func (t *Table) allStringsInRowEqual(slice rowStr) bool {
+	if len(slice) == 0 {
+		return true
+	}
+
+	first := slice[0]
+	for _, str := range slice {
+		if str != first {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *Table) extractMaxColumnLengthsFromRow(row rowStr, mci mergedColumnIndices) {
