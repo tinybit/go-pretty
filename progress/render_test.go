@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	trackerIncrementInterval = time.Millisecond * 20
-	renderUpdateFrequency    = time.Millisecond * 10
-	renderWaitTime           = time.Millisecond * 20
+	trackerIncrementInterval = time.Millisecond * 2
+	renderUpdateFrequency    = time.Microsecond * 500
+	renderWaitTime           = time.Millisecond * 5
 )
 
 type outputWriter struct {
@@ -343,7 +343,7 @@ func TestProgress_RenderNeverStarted(t *testing.T) {
 	time.Sleep(renderWaitTime)
 	tr.MarkAsDone()
 	pw.Stop()
-	time.Sleep(time.Second)
+	time.Sleep(renderWaitTime)
 
 	expectedOutPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`\s*\.\.\. {2}\?\?\? {2}\[\.{23}] \[0 in 0s]`),
@@ -365,9 +365,9 @@ func TestProgress_RenderNothing(t *testing.T) {
 	pw.SetOutputWriter(&renderOutput)
 
 	go pw.Render()
-	time.Sleep(time.Second)
+	time.Sleep(renderWaitTime)
 	pw.Stop()
-	time.Sleep(time.Second)
+	time.Sleep(renderWaitTime)
 
 	assert.Empty(t, renderOutput.String())
 }
@@ -790,7 +790,7 @@ func TestProgress_RenderSomeTrackers_WithOverallTracker_WithSpeedAndSpeedOverall
 		regexp.MustCompile(`Calculating Total   # 1 \.\.\. done! \[\d+\.\d+K in [\d.]+ms; \d+\.\d+K/s]`),
 		regexp.MustCompile(`Downloading File    # 2 \.\.\. done! \[\d+\.\d+KB in [\d.]+ms; \d+\.\d+KB/s]`),
 		regexp.MustCompile(`Transferring Amount # 3 \.\.\. done! \[\$\d+\.\d+K in [\d.]+ms; \$\d+\.\d+K/s]`),
-		regexp.MustCompile(`\[[.#]+] \[[\d.ms]+; ~ETA: [\d.ms]+]`),
+		regexp.MustCompile(`\[[.#]+] \[[\d.ms]+; ~ETA: [\d.ms]+(; [\d.]+[\w/]+)?]`),
 		regexp.MustCompile(`some information about something that happened at \d\d\d\d`),
 	}
 	out := renderOutput.String()
@@ -929,6 +929,90 @@ func TestProgress_RenderSomeTrackers_WithPinnedMessages_MultiLines(t *testing.T)
 		regexp.MustCompile(`Calc~ \.\.\. done! \[\d+\.\d+K in [\d.]+ms]`),
 		regexp.MustCompile(`Down~ \.\.\. done! \[\d+\.\d+KB in [\d.]+ms]`),
 		regexp.MustCompile(`Tran~ \.\.\. done! \[\$\d+\.\d+K in [\d.]+ms]`),
+	}
+	out := renderOutput.String()
+	for _, expectedOutPattern := range expectedOutPatterns {
+		if !expectedOutPattern.MatchString(out) {
+			assert.Fail(t, "Failed to find a pattern in the Output.", expectedOutPattern.String())
+		}
+	}
+	showOutputOnFailure(t, out)
+}
+
+func TestProgress_RenderSomeTrackers_WithCustomTrackerDeterminate(t *testing.T) {
+	renderOutput := outputWriter{}
+
+	pw := generateWriter()
+	pw.SetOutputWriter(&renderOutput)
+	pw.SetTrackerPosition(PositionRight)
+
+	symbols := []string{"♠", "♥", "♦", "♣", "🂡", "🂱"}
+
+	pw.Style().Renderer.TrackerDeterminate = func(value int64, total int64, maxLen int) string {
+		v := float64(value) / float64(total)
+		b := &strings.Builder{}
+		fmt.Fprintf(b, "[")
+		inner := maxLen - 2
+		for i := 0; i < inner; i++ {
+			delta := float64(i) / float64(inner)
+			symbolIdx := int(delta * float64(len(symbols)))
+			if symbolIdx >= len(symbols) {
+				symbolIdx = len(symbols) - 1
+			}
+			if delta < v {
+				fmt.Fprintf(b, "%s", symbols[symbolIdx])
+			} else {
+				fmt.Fprintf(b, " ")
+			}
+		}
+		fmt.Fprintf(b, "]")
+		return b.String()
+	}
+
+	go trackSomething(pw, &Tracker{Message: "Custom Tracker #1", Total: 1000, Units: UnitsDefault})
+	go trackSomething(pw, &Tracker{Message: "Custom Tracker #2", Total: 1000, Units: UnitsBytes})
+	renderAndWait(pw, false)
+
+	expectedOutPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`Custom Tracker #1 \.\.\. done! \[\d+\.\d+K in [\d.]+ms]`),
+		regexp.MustCompile(`Custom Tracker #2 \.\.\. done! \[\d+\.\d+KB in [\d.]+ms]`),
+	}
+	out := renderOutput.String()
+	for _, expectedOutPattern := range expectedOutPatterns {
+		if !expectedOutPattern.MatchString(out) {
+			assert.Fail(t, "Failed to find a pattern in the Output.", expectedOutPattern.String())
+		}
+	}
+	showOutputOnFailure(t, out)
+}
+
+func TestProgress_RenderSomeTrackers_WithCustomTrackerIndeterminate(t *testing.T) {
+	renderOutput := outputWriter{}
+
+	pw := generateWriter()
+	pw.SetOutputWriter(&renderOutput)
+	pw.SetTrackerPosition(PositionRight)
+
+	pw.Style().Renderer.TrackerIndeterminate = func(maxLen int) string {
+		b := &strings.Builder{}
+		fmt.Fprintf(b, "[")
+		inner := maxLen - 2
+		for i := 0; i < inner; i++ {
+			if i == 0 {
+				fmt.Fprintf(b, "★")
+			} else {
+				fmt.Fprintf(b, "☆")
+			}
+		}
+		fmt.Fprintf(b, "]")
+		return b.String()
+	}
+
+	go trackSomethingIndeterminate(pw, &Tracker{Message: "Indeterminate Tracker", Total: 0, Units: UnitsDefault})
+	renderAndWait(pw, false)
+
+	expectedOutPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`Indeterminate Tracker \.\.\. done! \[\d+ in [\d.]+ms]`),
 	}
 	out := renderOutput.String()
 	for _, expectedOutPattern := range expectedOutPatterns {

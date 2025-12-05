@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/progress"
@@ -12,6 +13,7 @@ import (
 
 var (
 	flagAutoStop           = flag.Bool("auto-stop", false, "Auto-stop rendering?")
+	flagCustomRenderer     = flag.Bool("custom-renderer", false, "Use custom render functions with rainbow colors")
 	flagHideETA            = flag.Bool("hide-eta", false, "Hide the ETA?")
 	flagHideETAOverall     = flag.Bool("hide-eta-overall", false, "Hide the ETA in the overall tracker?")
 	flagHideOverallTracker = flag.Bool("hide-overall", false, "Hide the Overall Tracker?")
@@ -36,8 +38,54 @@ var (
 		text.FgCyan,
 		text.FgWhite,
 	}
+	rng       = rand.New(rand.NewSource(time.Now().UnixNano()))
 	timeStart = time.Now()
 )
+
+// customTrackerDeterminateRenderer creates a progress bar using rainbow colors for determinate progress
+func customTrackerDeterminateRenderer(value int64, total int64, maxLen int) string {
+	progress := float64(value) / float64(total)
+	completed := int(progress * float64(maxLen))
+
+	var result strings.Builder
+	for i := 0; i < maxLen; i++ {
+		if i < completed {
+			// Use rainbow colors based on position in the progress bar
+			colorIdx := (i * 6) / maxLen // Map position to 6 rainbow colors
+			colors := []text.Color{
+				text.FgRed,
+				text.FgYellow,
+				text.FgGreen,
+				text.FgCyan,
+				text.FgBlue,
+				text.FgMagenta,
+			}
+			if colorIdx >= len(colors) {
+				colorIdx = len(colors) - 1
+			}
+			result.WriteString(colors[colorIdx].Sprint("█"))
+		} else {
+			result.WriteString(text.FgHiBlack.Sprint("░"))
+		}
+	}
+
+	return result.String()
+}
+
+// customTrackerIndeterminateRenderer creates a progress bar using rotating rainbow colors for indeterminate progress
+func customTrackerIndeterminateRenderer(maxLen int) string {
+	// For indeterminate progress, use rotating rainbow colors
+	colors := []text.Color{
+		text.FgRed,
+		text.FgYellow,
+		text.FgGreen,
+		text.FgCyan,
+		text.FgBlue,
+		text.FgMagenta,
+	}
+	idx := int(time.Now().UnixNano()/100000000) % len(colors)
+	return colors[idx].Sprint(strings.Repeat("█", maxLen))
+}
 
 func getMessage(idx int64, units *progress.Units) string {
 	var message string
@@ -74,9 +122,9 @@ func trackSomething(pw progress.Writer, idx int64, updateMessage bool) {
 	units := getUnits(idx)
 	message := getMessage(idx, units)
 	tracker := progress.Tracker{
-		DeferStart:         *flagRandomDefer && rand.Float64() < 0.5,
+		DeferStart:         *flagRandomDefer && rng.Float64() < 0.5,
 		Message:            message,
-		RemoveOnCompletion: *flagRandomRemove && rand.Float64() < 0.25,
+		RemoveOnCompletion: *flagRandomRemove && rng.Float64() < 0.25,
 		Total:              total,
 		Units:              *units,
 	}
@@ -143,6 +191,12 @@ func main() {
 	pw.Style().Visibility.TrackerOverall = !*flagHideOverallTracker
 	pw.Style().Visibility.Value = !*flagHideValue
 	pw.Style().Visibility.Pinned = *flagShowPinned
+
+	// set up custom render functions if flag is enabled
+	if *flagCustomRenderer {
+		pw.Style().Renderer.TrackerDeterminate = customTrackerDeterminateRenderer
+		pw.Style().Renderer.TrackerIndeterminate = customTrackerIndeterminateRenderer
+	}
 
 	// call Render() in async mode; yes we don't have any trackers at the moment
 	go pw.Render()

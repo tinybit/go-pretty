@@ -1,12 +1,15 @@
 package table
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -150,6 +153,127 @@ func TestTable_AppendRows(t *testing.T) {
 	assert.True(t, table.rowsConfigMap[3].AutoMerge)
 }
 
+func TestTable_ImportGrid(t *testing.T) {
+	t.Run("invalid grid", func(t *testing.T) {
+		table := Table{}
+
+		assert.False(t, table.ImportGrid(nil))
+		require.Len(t, table.rowsRawFiltered, 0)
+
+		assert.False(t, table.ImportGrid(123))
+		require.Len(t, table.rowsRawFiltered, 0)
+
+		assert.False(t, table.ImportGrid("abc"))
+		require.Len(t, table.rowsRawFiltered, 0)
+
+		assert.False(t, table.ImportGrid(Table{}))
+		require.Len(t, table.rowsRawFiltered, 0)
+
+		assert.False(t, table.ImportGrid(&Table{}))
+		require.Len(t, table.rowsRawFiltered, 0)
+	})
+
+	a, b, c := 1, 2, 3
+	d, e, f := 4, 5, 6
+	g, h, i := 7, 8, 9
+
+	t.Run("valid 1d", func(t *testing.T) {
+		inputs := []interface{}{
+			[3]int{a, b, c},     // array
+			[]int{a, b, c},      // slice
+			&[]int{a, b, c},     // pointer to slice
+			[]*int{&a, &b, &c},  // slice of pointers-to-slices
+			&[]*int{&a, &b, &c}, // pointer to slice of pointers
+		}
+
+		for _, grid := range inputs {
+			message := fmt.Sprintf("grid: %#v", grid)
+
+			table := Table{}
+			table.Style().Options.SeparateRows = true
+			assert.True(t, table.ImportGrid(grid), message)
+			compareOutput(t, table.Render(), `
++---+
+| 1 |
++---+
+| 2 |
++---+
+| 3 |
++---+`, message)
+		}
+	})
+
+	t.Run("valid 2d", func(t *testing.T) {
+		inputs := []interface{}{
+			[3][3]int{{a, b, c}, {d, e, f}, {g, h, i}},           // array of arrays
+			[3][]int{{a, b, c}, {d, e, f}, {g, h, i}},            // array of slices
+			[][]int{{a, b, c}, {d, e, f}, {g, h, i}},             // slice of slices
+			&[][]int{{a, b, c}, {d, e, f}, {g, h, i}},            // pointer-to-slice of slices
+			[]*[]int{{a, b, c}, {d, e, f}, {g, h, i}},            // slice of pointers-to-slices
+			&[]*[]int{{a, b, c}, {d, e, f}, {g, h, i}},           // pointer-to-slice of pointers-to-slices
+			&[]*[]*int{{&a, &b, &c}, {&d, &e, &f}, {&g, &h, &i}}, // pointer-to-slice of pointers-to-slices of pointers
+		}
+
+		for _, grid := range inputs {
+			message := fmt.Sprintf("grid: %#v", grid)
+
+			table := Table{}
+			table.Style().Options.SeparateRows = true
+			assert.True(t, table.ImportGrid(grid), message)
+			compareOutput(t, table.Render(), `
++---+---+---+
+| 1 | 2 | 3 |
++---+---+---+
+| 4 | 5 | 6 |
++---+---+---+
+| 7 | 8 | 9 |
++---+---+---+`, message)
+		}
+	})
+
+	t.Run("valid 2d with nil rows", func(t *testing.T) {
+		inputs := []interface{}{
+			[]*[]int{{a, b, c}, {d, e, f}, nil},         // slice of pointers-to-slices
+			&[]*[]int{{a, b, c}, {d, e, f}, nil},        // pointer-to-slice of pointers-to-slices
+			&[]*[]*int{{&a, &b, &c}, {&d, &e, &f}, nil}, // pointer-to-slice of pointers-to-slices of pointers
+		}
+
+		for _, grid := range inputs {
+			message := fmt.Sprintf("grid: %#v", grid)
+
+			table := Table{}
+			table.Style().Options.SeparateRows = true
+			assert.True(t, table.ImportGrid(grid), message)
+			compareOutput(t, table.Render(), `
++---+---+---+
+| 1 | 2 | 3 |
++---+---+---+
+| 4 | 5 | 6 |
++---+---+---+`, message)
+		}
+	})
+
+	t.Run("valid 2d with nil columns and rows", func(t *testing.T) {
+		inputs := []interface{}{
+			&[]*[]*int{{&a, &b, &c}, {&d, &e, nil}, nil},
+		}
+
+		for _, grid := range inputs {
+			message := fmt.Sprintf("grid: %#v", grid)
+
+			table := Table{}
+			table.Style().Options.SeparateRows = true
+			assert.True(t, table.ImportGrid(grid), message)
+			compareOutput(t, table.Render(), `
++---+---+---+
+| 1 | 2 | 3 |
++---+---+---+
+| 4 | 5 |   |
++---+---+---+`, message)
+		}
+	})
+}
+
 func TestTable_Length(t *testing.T) {
 	table := Table{}
 	assert.Zero(t, table.Length())
@@ -184,10 +308,10 @@ func TestTable_ResetHeaders(t *testing.T) {
 func TestTable_ResetRows(t *testing.T) {
 	table := Table{}
 	table.AppendRows(testRows)
-	assert.NotEmpty(t, table.rowsRaw)
+	assert.NotEmpty(t, table.rowsRawFiltered)
 
 	table.ResetRows()
-	assert.Empty(t, table.rowsRaw)
+	assert.Empty(t, table.rowsRawFiltered)
 }
 
 func TestTable_SetAllowedRowLength(t *testing.T) {
@@ -374,4 +498,376 @@ func TestTable_SetStyle(t *testing.T) {
 	table.SetStyle(StyleDefault)
 	assert.NotNil(t, table.Style())
 	assert.Equal(t, StyleDefault, *table.Style())
+}
+
+func TestTable_ColumsHorizontalMerge(t *testing.T) {
+	expectedOutput := `
+╭───┬──────────────────────────────────────┬────────────────────┬─────────────┬─────────────────────────┬──────────┬────────┬───────────┬─────────╮
+│ # │ Run ID                               │ Plugin Name        │ Started By  │ Start Time              │ Duration │ Done   │ Cancelled │ Success │
+├───┼──────────────────────────────────────┼────────────────────┼─────────────┼─────────────────────────┼──────────┼────────┼───────────┼─────────┤
+│ 1 │ 446056cf-8737-459b-8295-2f0fc34b1f30 │ clients_benchmarks │ john_dow_12 │ 2025-12-05 08:51:52 +08 │ 2s       │ true   │ false     │ true    │
+│ 2 │ 12140ce3-74ce-474e-b618-572649b6be47 │ clients_benchmarks │ john_dow_12 │ 2025-12-05 04:53:50 +08 │ 42s      │ true   │ false     │ false   │
+├───┼──────────────────────────────────────┴────────────────────┴─────────────┴─────────────────────────┴──────────┴────────┴───────────┴─────────┤
+│ > │ Failed with error: Run(): File upload failed. The file size exceeds the maximum limit of 5MB for this operation. Please compress your data, │
+│   │ remove unnecessary content, or split it into multiple smaller files, then try uploading again with a file that is within the allowed size   │
+│   │ limit. If the problem persists, check your connection or contact support.                                                                   │
+╰───┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯`
+
+	// build vertical table using go-pretty
+	tw := NewWriter()
+	tw.SetStyle(StyleRounded)
+	tw.SetOutputMirror(os.Stdout) // ensure the table is printed to stdout
+
+	minColWidth := 1
+	maxColWidth := 200
+	maxWrap := 139
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{
+			Number:   2,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   3,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   4,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   5,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   6,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   7,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   8,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   9,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+	})
+
+	rowConfig := RowConfig{AutoMerge: false, AutoMergeAlign: text.AlignLeft}
+
+	pluginNameStyle := text.Colors{}
+	normalStyle := text.Colors{}
+	successStyle := text.Colors{}
+	failureStyle := text.Colors{}
+	inProgressStyle := text.Colors{}
+
+	isDone := true
+	isDoneStr := ""
+	if isDone {
+		isDoneStr = successStyle.Sprint(isDone)
+	} else {
+		isDoneStr = inProgressStyle.Sprint(isDone)
+	}
+
+	isCancelled := false
+	isCancelledStr := ""
+	if isDone {
+		if isCancelled {
+			isCancelledStr = inProgressStyle.Sprint(isCancelled)
+		} else {
+			isCancelledStr = successStyle.Sprint(isCancelled)
+		}
+	} else {
+		isCancelledStr = inProgressStyle.Sprint(isCancelled)
+	}
+
+	isSuccess := true
+	isSuccessStr := ""
+	if isDone {
+		if isSuccess {
+			isSuccessStr = successStyle.Sprint(isSuccess)
+		} else {
+			isSuccessStr = failureStyle.Sprint(isSuccess)
+		}
+	} else {
+		isSuccessStr = inProgressStyle.Sprint(isSuccess)
+	}
+
+	tw.AppendRow(Row{"#", "Run ID", "Plugin Name", "Started By", "Start Time", "Duration", "Done", "Cancelled", "Success"})
+	tw.AppendSeparator()
+
+	// row 1 - success
+	row := Row{
+		1,
+		"446056cf-8737-459b-8295-2f0fc34b1f30",
+		pluginNameStyle.Sprint("clients_benchmarks"),
+		"john_dow_12",
+		"2025-12-05 08:51:52 +08",
+		pluginNameStyle.Sprint("2s"),
+		isDoneStr,
+		isCancelledStr,
+		isSuccessStr,
+	}
+
+	tw.AppendRow(row, rowConfig)
+
+	isSuccess = false
+	isSuccessStr = ""
+	if isDone {
+		if isSuccess {
+			isSuccessStr = successStyle.Sprint(isSuccess)
+		} else {
+			isSuccessStr = failureStyle.Sprint(isSuccess)
+		}
+	} else {
+		isSuccessStr = inProgressStyle.Sprint(isSuccess)
+	}
+
+	// row 2 - failure
+	row = Row{
+		2,
+		"12140ce3-74ce-474e-b618-572649b6be47",
+		pluginNameStyle.Sprint("clients_benchmarks"),
+		"john_dow_12",
+		"2025-12-05 04:53:50 +08",
+		pluginNameStyle.Sprint("42s"),
+		isDoneStr,
+		isCancelledStr,
+		isSuccessStr,
+	}
+
+	tw.AppendRow(row, rowConfig)
+
+	// row 3 - failure message
+
+	errorMsg := "Run(): File upload failed. The file size exceeds the maximum limit of 5MB for this operation. Please compress your data, remove unnecessary content, or split it into multiple smaller files, then try uploading again with a file that is within the allowed size limit. If the problem persists, check your connection or contact support. "
+	ff := failureStyle.Sprint("Failed with error: ") + normalStyle.Sprint(errorMsg)
+	arr := failureStyle.Sprint(">")
+	tw.AppendSeparator()
+	tw.AppendRow(Row{arr, ff, ff, ff, ff, ff, ff, ff, ff}, RowConfig{AutoMerge: true, AutoMergeAlign: text.AlignLeft})
+	tw.AppendSeparator()
+
+	compareOutput(t, tw.Render(), expectedOutput)
+}
+
+func TestTable_ColumsHorizontalMerge2(t *testing.T) {
+	expectedOutput := `
+╭───┬──────────────────────────────────────┬────────────────────┬─────────────┬─────────────────────────┬──────────┬────────┬───────────┬─────────╮
+│ # │ Run ID                               │ Plugin Name        │ Started By  │ Start Time              │ Duration │ Done   │ Cancelled │ Success │
+├───┼──────────────────────────────────────┼────────────────────┼─────────────┼─────────────────────────┼──────────┼────────┼───────────┼─────────┤
+│ 1 │ 446056cf-8737-459b-8295-2f0fc34b1f30 │ clients_benchmarks │ john_dow_12 │ 2025-12-05 08:51:52 +08 │ 2s       │ true   │ false     │ true    │
+│ 2 │ 12140ce3-74ce-474e-b618-572649b6be47 │ clients_benchmarks │ john_dow_12 │ 2025-12-05 04:53:50 +08 │ 42s      │ true   │ false     │ false   │
+├───┼──────────────────────────────────────┴────────────────────┴─────────────┴─────────────────────────┴──────────┴────────┴───────────┴─────────┤
+│ > │ Failed with error: Run(): File upload failed. The file size exceeds the maximum limit of 5MB for this operation. Please compress your data, │
+│   │ remove unnecessary content, or split it into multiple smaller files, then try uploading again with a file that is within the allowed size   │
+│   │ limit. If the problem persists, check your connection or contact support.                                                                   │
+╰───┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯`
+
+	// build vertical table using go-pretty
+	tw := NewWriter()
+	tw.SetStyle(StyleRounded)
+	tw.SetOutputMirror(os.Stdout) // ensure the table is printed to stdout
+
+	minColWidth := 1
+	maxColWidth := 200
+	maxWrap := 139
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{
+			Number:   2,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   3,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   4,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   5,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   6,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   7,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   8,
+			WidthMin: minColWidth,
+			WidthMax: maxColWidth,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+		{
+			Number:   9,
+			WidthMin: minColWidth,
+			WidthMax: 9,
+			Transformer: text.Transformer(func(val interface{}) string {
+				return text.WrapSoft(fmt.Sprintf("%v", val), maxWrap)
+			}),
+		},
+	})
+
+	rowConfig := RowConfig{AutoMerge: false, AutoMergeAlign: text.AlignLeft}
+
+	pluginNameStyle := text.Colors{}
+	normalStyle := text.Colors{}
+	successStyle := text.Colors{}
+	failureStyle := text.Colors{}
+	inProgressStyle := text.Colors{}
+
+	isDone := true
+	isDoneStr := ""
+	if isDone {
+		isDoneStr = successStyle.Sprint(isDone)
+	} else {
+		isDoneStr = inProgressStyle.Sprint(isDone)
+	}
+
+	isCancelled := false
+	isCancelledStr := ""
+	if isDone {
+		if isCancelled {
+			isCancelledStr = inProgressStyle.Sprint(isCancelled)
+		} else {
+			isCancelledStr = successStyle.Sprint(isCancelled)
+		}
+	} else {
+		isCancelledStr = inProgressStyle.Sprint(isCancelled)
+	}
+
+	isSuccess := true
+	isSuccessStr := ""
+	if isDone {
+		if isSuccess {
+			isSuccessStr = successStyle.Sprint(isSuccess)
+		} else {
+			isSuccessStr = failureStyle.Sprint(isSuccess)
+		}
+	} else {
+		isSuccessStr = inProgressStyle.Sprint(isSuccess)
+	}
+
+	tw.AppendRow(Row{"#", "Run ID", "Plugin Name", "Started By", "Start Time", "Duration", "Done", "Cancelled", "Success"})
+	tw.AppendSeparator()
+
+	// row 1 - success
+	row := Row{
+		1,
+		"446056cf-8737-459b-8295-2f0fc34b1f30",
+		pluginNameStyle.Sprint("clients_benchmarks"),
+		"john_dow_12",
+		"2025-12-05 08:51:52 +08",
+		pluginNameStyle.Sprint("2s"),
+		isDoneStr,
+		isCancelledStr,
+		isSuccessStr,
+	}
+
+	tw.AppendRow(row, rowConfig)
+
+	isSuccess = false
+	isSuccessStr = ""
+	if isDone {
+		if isSuccess {
+			isSuccessStr = successStyle.Sprint(isSuccess)
+		} else {
+			isSuccessStr = failureStyle.Sprint(isSuccess)
+		}
+	} else {
+		isSuccessStr = inProgressStyle.Sprint(isSuccess)
+	}
+
+	// row 2 - failure
+	row = Row{
+		2,
+		"12140ce3-74ce-474e-b618-572649b6be47",
+		pluginNameStyle.Sprint("clients_benchmarks"),
+		"john_dow_12",
+		"2025-12-05 04:53:50 +08",
+		pluginNameStyle.Sprint("42s"),
+		isDoneStr,
+		isCancelledStr,
+		isSuccessStr,
+	}
+
+	tw.AppendRow(row, rowConfig)
+
+	// row 3 - failure message
+
+	errorMsg := "Run(): File upload failed. The file size exceeds the maximum limit of 5MB for this operation. Please compress your data, remove unnecessary content, or split it into multiple smaller files, then try uploading again with a file that is within the allowed size limit. If the problem persists, check your connection or contact support. "
+	ff := failureStyle.Sprint("Failed with error: ") + normalStyle.Sprint(errorMsg)
+	arr := failureStyle.Sprint(">")
+	tw.AppendSeparator()
+	tw.AppendRow(Row{arr, ff, ff, ff, ff, ff, ff, ff, ff}, RowConfig{AutoMerge: true, AutoMergeAlign: text.AlignLeft})
+	tw.AppendSeparator()
+
+	compareOutput(t, tw.Render(), expectedOutput)
 }

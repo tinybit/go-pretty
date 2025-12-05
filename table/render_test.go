@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func compareOutput(t *testing.T, out string, expectedOut string) {
+func compareOutput(t *testing.T, out string, expectedOut string, message ...interface{}) {
 	if strings.HasPrefix(expectedOut, "\n") {
 		expectedOut = strings.Replace(expectedOut, "\n", "", 1)
 	}
-	assert.Equal(t, expectedOut, out)
+	assert.Equal(t, expectedOut, out, message...)
 	if out != expectedOut {
 		fmt.Printf("Expected:\n%s\nActual:\n%s\n", expectedOut, out)
 	} else {
@@ -112,20 +112,64 @@ A Song of Ice and Fire`)
 }
 
 func TestTable_Render_Align(t *testing.T) {
-	tw := NewWriter()
-	tw.AppendHeader(testHeader)
-	tw.AppendRows(testRows)
-	tw.AppendRow(Row{500, "Jamie", "Lannister", "Kingslayer", "The things I do for love."})
-	tw.AppendRow(Row{1000, "Tywin", "Lannister", nil})
-	tw.AppendFooter(testFooter)
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Name: "First Name", Align: text.AlignLeft, AlignHeader: text.AlignLeft, AlignFooter: text.AlignLeft},
-		{Name: "Last Name", Align: text.AlignRight, AlignHeader: text.AlignRight, AlignFooter: text.AlignRight},
-		{Name: "Salary", Align: text.AlignAuto, AlignHeader: text.AlignRight, AlignFooter: text.AlignAuto},
-		{Number: 5, Align: text.AlignJustify, AlignHeader: text.AlignJustify, AlignFooter: text.AlignJustify},
+	t.Run("defaults", func(t *testing.T) {
+		tw := NewWriter()
+		tw.AppendHeader(Row{"#", "First\nName", "Last\nName", "Final\nState", "Misc.\nMulti-line\nNotes"})
+		tw.AppendRows([]Row{
+			{1, "Arya", "Stark", ":) 8)"},
+			{20, "Jon", "Snow", ":( :( :(", "You know nothing, Jon Snow!"},
+			{300, "Tyrion", "Lannister", ":)"},
+		})
+		tw.AppendFooter(Row{"#", "First\nName", "Last\nName", "Final\nState", "Misc.\nMulti-line\nNotes"})
+		tw.Style().Format = FormatOptions{
+			FooterAlign:  text.AlignRight,
+			FooterVAlign: text.VAlignTop,
+			HeaderAlign:  text.AlignLeft,
+			HeaderVAlign: text.VAlignBottom,
+			RowAlign:     text.AlignCenter,
+			RowVAlign:    text.VAlignMiddle,
+		}
+		tw.SetColumnConfigs([]ColumnConfig{ // takes precedence
+			{
+				Name:  "Final\nState",
+				Align: text.AlignLeft, VAlign: text.VAlignTop,
+				AlignHeader: text.AlignLeft, VAlignHeader: text.VAlignTop,
+				AlignFooter: text.AlignLeft, VAlignFooter: text.VAlignBottom,
+			},
+		})
+
+		compareOutput(t, tw.Render(), `
++-----+--------+-----------+----------+-----------------------------+
+|     |        |           | Final    | Misc.                       |
+|     | First  | Last      | State    | Multi-line                  |
+|   # | Name   | Name      |          | Notes                       |
++-----+--------+-----------+----------+-----------------------------+
+|   1 |  Arya  |   Stark   | :) 8)    |                             |
+|  20 |   Jon  |    Snow   | :( :( :( | You know nothing, Jon Snow! |
+| 300 | Tyrion | Lannister | :)       |                             |
++-----+--------+-----------+----------+-----------------------------+
+|   # |  First |      Last |          |                       Misc. |
+|     |   Name |      Name | Final    |                  Multi-line |
+|     |        |           | State    |                       Notes |
++-----+--------+-----------+----------+-----------------------------+`)
+
 	})
 
-	compareOutput(t, tw.Render(), `
+	t.Run("column overrides", func(t *testing.T) {
+		tw := NewWriter()
+		tw.AppendHeader(testHeader)
+		tw.AppendRows(testRows)
+		tw.AppendRow(Row{500, "Jamie", "Lannister", "Kingslayer", "The things I do for love."})
+		tw.AppendRow(Row{1000, "Tywin", "Lannister", nil})
+		tw.AppendFooter(testFooter)
+		tw.SetColumnConfigs([]ColumnConfig{
+			{Name: "First Name", Align: text.AlignLeft, AlignHeader: text.AlignLeft, AlignFooter: text.AlignLeft},
+			{Name: "Last Name", Align: text.AlignRight, AlignHeader: text.AlignRight, AlignFooter: text.AlignRight},
+			{Name: "Salary", Align: text.AlignAuto, AlignHeader: text.AlignRight, AlignFooter: text.AlignAuto},
+			{Number: 5, Align: text.AlignJustify, AlignHeader: text.AlignJustify, AlignFooter: text.AlignJustify},
+		})
+
+		compareOutput(t, tw.Render(), `
 +------+------------+-----------+------------+-----------------------------+
 |    # | FIRST NAME | LAST NAME |     SALARY |                             |
 +------+------------+-----------+------------+-----------------------------+
@@ -137,6 +181,7 @@ func TestTable_Render_Align(t *testing.T) {
 +------+------------+-----------+------------+-----------------------------+
 |      |            |     TOTAL |      10000 |                             |
 +------+------------+-----------+------------+-----------------------------+`)
+	})
 }
 
 func TestTable_Render_AutoIndex(t *testing.T) {
@@ -166,6 +211,189 @@ func TestTable_Render_AutoIndex(t *testing.T) {
 │  9 │ A9  │ B9  │ C9  │ D9  │ E9  │ F9  │ G9  │ H9  │ I9  │ J9  │
 │ 10 │ A10 │ B10 │ C10 │ D10 │ E10 │ F10 │ G10 │ H10 │ I10 │ J10 │
 └────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘`)
+}
+
+func TestTable_Render_AutoWidth(t *testing.T) {
+	tw := NewWriter()
+	tw.AppendHeader(testHeader)
+	tw.AppendRows(testRows)
+	tw.AppendFooter(testFooter)
+	tw.SetStyle(StyleLight)
+	compareOutput(t, tw.Render(), `
+┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐
+│   # │ FIRST NAME │ LAST NAME │ SALARY │                             │
+├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
+│   1 │ Arya       │ Stark     │   3000 │                             │
+│  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │
+│ 300 │ Tyrion     │ Lannister │   5000 │                             │
+├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
+│     │            │ TOTAL     │  10000 │                             │
+└─────┴────────────┴───────────┴────────┴─────────────────────────────┘`)
+
+	tw.SetTitle("Game of Thrones")
+	tw.Style().Size = SizeOptions{
+		WidthMax: 0,
+		WidthMin: 100,
+	}
+	compareOutput(t, tw.Render(), `
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Game of Thrones                                                                                  │
+├───────────┬──────────────────┬─────────────────┬──────────────┬──────────────────────────────────┤
+│         # │ FIRST NAME       │ LAST NAME       │       SALARY │                                  │
+├───────────┼──────────────────┼─────────────────┼──────────────┼──────────────────────────────────┤
+│         1 │ Arya             │ Stark           │         3000 │                                  │
+│        20 │ Jon              │ Snow            │         2000 │ You know nothing, Jon Snow!      │
+│       300 │ Tyrion           │ Lannister       │         5000 │                                  │
+├───────────┼──────────────────┼─────────────────┼──────────────┼──────────────────────────────────┤
+│           │                  │ TOTAL           │        10000 │                                  │
+└───────────┴──────────────────┴─────────────────┴──────────────┴──────────────────────────────────┘`)
+
+	tw.SetTitle("")
+	tw.Style().Size = SizeOptions{
+		WidthMax: 0,
+		WidthMin: 120,
+	}
+	compareOutput(t, tw.Render(), `
+┌───────────────┬──────────────────────┬─────────────────────┬──────────────────┬──────────────────────────────────────┐
+│             # │ FIRST NAME           │ LAST NAME           │           SALARY │                                      │
+├───────────────┼──────────────────────┼─────────────────────┼──────────────────┼──────────────────────────────────────┤
+│             1 │ Arya                 │ Stark               │             3000 │                                      │
+│            20 │ Jon                  │ Snow                │             2000 │ You know nothing, Jon Snow!          │
+│           300 │ Tyrion               │ Lannister           │             5000 │                                      │
+├───────────────┼──────────────────────┼─────────────────────┼──────────────────┼──────────────────────────────────────┤
+│               │                      │ TOTAL               │            10000 │                                      │
+└───────────────┴──────────────────────┴─────────────────────┴──────────────────┴──────────────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 1, WidthMax: 4},
+	})
+	compareOutput(t, tw.Render(), `
+┌──────┬────────────────────────┬───────────────────────┬────────────────────┬─────────────────────────────────────────┐
+│    # │ FIRST NAME             │ LAST NAME             │             SALARY │                                         │
+├──────┼────────────────────────┼───────────────────────┼────────────────────┼─────────────────────────────────────────┤
+│    1 │ Arya                   │ Stark                 │               3000 │                                         │
+│   20 │ Jon                    │ Snow                  │               2000 │ You know nothing, Jon Snow!             │
+│  300 │ Tyrion                 │ Lannister             │               5000 │                                         │
+├──────┼────────────────────────┼───────────────────────┼────────────────────┼─────────────────────────────────────────┤
+│      │                        │ TOTAL                 │              10000 │                                         │
+└──────┴────────────────────────┴───────────────────────┴────────────────────┴─────────────────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 1, WidthMax: 4},
+		{Number: 2, WidthMax: 10},
+	})
+	compareOutput(t, tw.Render(), `
+┌──────┬────────────┬───────────────────────────┬────────────────────────┬─────────────────────────────────────────────┐
+│    # │ FIRST NAME │ LAST NAME                 │                 SALARY │                                             │
+├──────┼────────────┼───────────────────────────┼────────────────────────┼─────────────────────────────────────────────┤
+│    1 │ Arya       │ Stark                     │                   3000 │                                             │
+│   20 │ Jon        │ Snow                      │                   2000 │ You know nothing, Jon Snow!                 │
+│  300 │ Tyrion     │ Lannister                 │                   5000 │                                             │
+├──────┼────────────┼───────────────────────────┼────────────────────────┼─────────────────────────────────────────────┤
+│      │            │ TOTAL                     │                  10000 │                                             │
+└──────┴────────────┴───────────────────────────┴────────────────────────┴─────────────────────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 1, WidthMax: 4},
+		{Number: 2, WidthMax: 10},
+		{Number: 3, WidthMax: 10},
+	})
+	compareOutput(t, tw.Render(), `
+┌──────┬────────────┬────────────┬────────────────────────────────┬────────────────────────────────────────────────────┐
+│    # │ FIRST NAME │ LAST NAME  │                         SALARY │                                                    │
+├──────┼────────────┼────────────┼────────────────────────────────┼────────────────────────────────────────────────────┤
+│    1 │ Arya       │ Stark      │                           3000 │                                                    │
+│   20 │ Jon        │ Snow       │                           2000 │ You know nothing, Jon Snow!                        │
+│  300 │ Tyrion     │ Lannister  │                           5000 │                                                    │
+├──────┼────────────┼────────────┼────────────────────────────────┼────────────────────────────────────────────────────┤
+│      │            │ TOTAL      │                          10000 │                                                    │
+└──────┴────────────┴────────────┴────────────────────────────────┴────────────────────────────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 1, WidthMax: 4},
+		{Number: 2, WidthMax: 10},
+		{Number: 3, WidthMax: 10},
+		{Number: 4, WidthMax: 6},
+	})
+	compareOutput(t, tw.Render(), `
+┌──────┬────────────┬────────────┬────────┬────────────────────────────────────────────────────────────────────────────┐
+│    # │ FIRST NAME │ LAST NAME  │ SALARY │                                                                            │
+├──────┼────────────┼────────────┼────────┼────────────────────────────────────────────────────────────────────────────┤
+│    1 │ Arya       │ Stark      │   3000 │                                                                            │
+│   20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow!                                                │
+│  300 │ Tyrion     │ Lannister  │   5000 │                                                                            │
+├──────┼────────────┼────────────┼────────┼────────────────────────────────────────────────────────────────────────────┤
+│      │            │ TOTAL      │  10000 │                                                                            │
+└──────┴────────────┴────────────┴────────┴────────────────────────────────────────────────────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 1, WidthMax: 4},
+		{Number: 2, WidthMax: 10},
+		{Number: 3, WidthMax: 10},
+		{Number: 4, WidthMax: 6},
+		{Number: 5, WidthMax: 27},
+	})
+	compareOutput(t, tw.Render(), `
+┌──────┬────────────┬────────────┬────────┬─────────────────────────────┐
+│    # │ FIRST NAME │ LAST NAME  │ SALARY │                             │
+├──────┼────────────┼────────────┼────────┼─────────────────────────────┤
+│    1 │ Arya       │ Stark      │   3000 │                             │
+│   20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow! │
+│  300 │ Tyrion     │ Lannister  │   5000 │                             │
+├──────┼────────────┼────────────┼────────┼─────────────────────────────┤
+│      │            │ TOTAL      │  10000 │                             │
+└──────┴────────────┴────────────┴────────┴─────────────────────────────┘`)
+
+	tw.SetColumnConfigs([]ColumnConfig{
+		{Number: 2, WidthMax: 10},
+		{Number: 3, WidthMax: 10},
+		{Number: 4, WidthMax: 6},
+		{Number: 5, WidthMax: 27},
+	})
+	compareOutput(t, tw.Render(), `
+┌─────────────────────────────────────────────────────┬────────────┬────────────┬────────┬─────────────────────────────┐
+│                                                   # │ FIRST NAME │ LAST NAME  │ SALARY │                             │
+├─────────────────────────────────────────────────────┼────────────┼────────────┼────────┼─────────────────────────────┤
+│                                                   1 │ Arya       │ Stark      │   3000 │                             │
+│                                                  20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow! │
+│                                                 300 │ Tyrion     │ Lannister  │   5000 │                             │
+├─────────────────────────────────────────────────────┼────────────┼────────────┼────────┼─────────────────────────────┤
+│                                                     │            │ TOTAL      │  10000 │                             │
+└─────────────────────────────────────────────────────┴────────────┴────────────┴────────┴─────────────────────────────┘`)
+
+	tw.SetColumnConfigs(nil)
+	tw.Style().Size = SizeOptions{
+		WidthMax: 60,
+		WidthMin: 0,
+	}
+	compareOutput(t, tw.Render(), `
+┌─────┬────────────┬───────────┬────────┬───────────────── ≈
+│   # │ FIRST NAME │ LAST NAME │ SALARY │                  ≈
+├─────┼────────────┼───────────┼────────┼───────────────── ≈
+│   1 │ Arya       │ Stark     │   3000 │                  ≈
+│  20 │ Jon        │ Snow      │   2000 │ You know nothing ≈
+│ 300 │ Tyrion     │ Lannister │   5000 │                  ≈
+├─────┼────────────┼───────────┼────────┼───────────────── ≈
+│     │            │ TOTAL     │  10000 │                  ≈
+└─────┴────────────┴───────────┴────────┴───────────────── ≈`)
+
+	// expanded columns, but truncated row - not a valid usage scenario;
+	// no enforcement on min < max at this point
+	tw.SetColumnConfigs(nil)
+	tw.Style().Size = SizeOptions{
+		WidthMax: 60,
+		WidthMin: 80,
+	}
+	compareOutput(t, tw.Render(), `
+┌───────┬──────────────┬─────────────┬──────────┬───────── ≈
+│     # │ FIRST NAME   │ LAST NAME   │   SALARY │          ≈
+├───────┼──────────────┼─────────────┼──────────┼───────── ≈
+│     1 │ Arya         │ Stark       │     3000 │          ≈
+│    20 │ Jon          │ Snow        │     2000 │ You know ≈
+│   300 │ Tyrion       │ Lannister   │     5000 │          ≈
+├───────┼──────────────┼─────────────┼──────────┼───────── ≈
+│       │              │ TOTAL       │    10000 │          ≈
+└───────┴──────────────┴─────────────┴──────────┴───────── ≈`)
 }
 
 func TestTable_Render_BorderAndSeparators(t *testing.T) {
@@ -343,6 +571,223 @@ func TestTable_Render_BorderAndSeparators_Colored(t *testing.T) {
 		"\x1b[31m│\x1b[0m     \x1b[33m│\x1b[0m            \x1b[33m│\x1b[0m TOTAL     \x1b[33m│\x1b[0m  10000 \x1b[33m│\x1b[0m                             \x1b[31m│\x1b[0m\n"+
 		"\x1b[31m└\x1b[0m\x1b[31m─────\x1b[0m\x1b[31m┴\x1b[0m\x1b[31m────────────\x1b[0m\x1b[31m┴\x1b[0m\x1b[31m───────────\x1b[0m\x1b[31m┴\x1b[0m\x1b[31m────────\x1b[0m\x1b[31m┴\x1b[0m\x1b[31m─────────────────────────────\x1b[0m\x1b[31m┘\x1b[0m",
 	)
+}
+
+func TestTable_Render_Horizontal(t *testing.T) {
+	tw := NewWriter()
+	tw.AppendHeader(testHeader)
+	tw.AppendHeader(testHeader)
+	tw.AppendRows(testRows)
+	tw.AppendFooter(testFooter)
+	tw.AppendFooter(testFooter)
+	tw.SetStyle(StyleDefault)
+	tw.Style().Options.DrawBorder = true
+	tw.Style().Options.SeparateColumns = true
+	tw.Style().Options.SeparateFooter = true
+	tw.Style().Options.SeparateHeader = true
+	tw.Style().Options.SeparateRows = true
+
+	resetTable := func() {
+		tw.ResetHeaders()
+		tw.ResetRows()
+		tw.ResetFooters()
+	}
+
+	// Customize all BoxStyleHorizontal values with distinct characters
+	// This tests that all horizontal line customization options work correctly
+	tw.Style().Box.Horizontal = &BoxStyleHorizontal{
+		TitleTop:     "0",
+		TitleBottom:  "1",
+		HeaderTop:    "2",
+		HeaderMiddle: "3",
+		HeaderBottom: "4",
+		RowTop:       "5",
+		RowMiddle:    "6",
+		RowBottom:    "7",
+		FooterTop:    "8",
+		FooterMiddle: "9",
+		FooterBottom: "A",
+	}
+
+	t.Run("just rows", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendRows(testRows)
+		tw.SetTitle("")
+
+		compareOutput(t, tw.Render(), `
++55555+55555555+55555555555+555555+55555555555555555555555555555+
+|   1 | Arya   | Stark     | 3000 |                             |
++66666+66666666+66666666666+666666+66666666666666666666666666666+
+|  20 | Jon    | Snow      | 2000 | You know nothing, Jon Snow! |
++66666+66666666+66666666666+666666+66666666666666666666666666666+
+| 300 | Tyrion | Lannister | 5000 |                             |
++77777+77777777+77777777777+777777+77777777777777777777777777777+`)
+	})
+
+	t.Run("headers & rows", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendHeader(testHeader)
+		tw.AppendHeader(testHeader)
+		tw.AppendRows(testRows)
+		tw.SetTitle("")
+
+		compareOutput(t, tw.Render(), `
++22222+222222222222+22222222222+22222222+22222222222222222222222222222+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++33333+333333333333+33333333333+33333333+33333333333333333333333333333+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++44444+444444444444+44444444444+44444444+44444444444444444444444444444+
+|   1 | Arya       | Stark     |   3000 |                             |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+|  20 | Jon        | Snow      |   2000 | You know nothing, Jon Snow! |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+| 300 | Tyrion     | Lannister |   5000 |                             |
++77777+777777777777+77777777777+77777777+77777777777777777777777777777+`)
+	})
+
+	t.Run("headers & rows & footers", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendHeader(testHeader)
+		tw.AppendHeader(testHeader)
+		tw.AppendRows(testRows)
+		tw.AppendFooter(testFooter)
+		tw.AppendFooter(testFooter)
+		tw.SetTitle("")
+
+		compareOutput(t, tw.Render(), `
++22222+222222222222+22222222222+22222222+22222222222222222222222222222+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++33333+333333333333+33333333333+33333333+33333333333333333333333333333+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++44444+444444444444+44444444444+44444444+44444444444444444444444444444+
+|   1 | Arya       | Stark     |   3000 |                             |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+|  20 | Jon        | Snow      |   2000 | You know nothing, Jon Snow! |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+| 300 | Tyrion     | Lannister |   5000 |                             |
++88888+888888888888+88888888888+88888888+88888888888888888888888888888+
+|     |            | TOTAL     |  10000 |                             |
++99999+999999999999+99999999999+99999999+99999999999999999999999999999+
+|     |            | TOTAL     |  10000 |                             |
++AAAAA+AAAAAAAAAAAA+AAAAAAAAAAA+AAAAAAAA+AAAAAAAAAAAAAAAAAAAAAAAAAAAAA+`)
+	})
+
+	t.Run("title & headers & rows & footers", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendHeader(testHeader)
+		tw.AppendHeader(testHeader)
+		tw.AppendRows(testRows)
+		tw.AppendFooter(testFooter)
+		tw.AppendFooter(testFooter)
+		tw.SetTitle(testTitle1)
+
+		compareOutput(t, tw.Render(), `
++000000000000000000000000000000000000000000000000000000000000000000000+
+| Game of Thrones                                                     |
++11111+111111111111+11111111111+11111111+11111111111111111111111111111+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++33333+333333333333+33333333333+33333333+33333333333333333333333333333+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++44444+444444444444+44444444444+44444444+44444444444444444444444444444+
+|   1 | Arya       | Stark     |   3000 |                             |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+|  20 | Jon        | Snow      |   2000 | You know nothing, Jon Snow! |
++66666+666666666666+66666666666+66666666+66666666666666666666666666666+
+| 300 | Tyrion     | Lannister |   5000 |                             |
++88888+888888888888+88888888888+88888888+88888888888888888888888888888+
+|     |            | TOTAL     |  10000 |                             |
++99999+999999999999+99999999999+99999999+99999999999999999999999999999+
+|     |            | TOTAL     |  10000 |                             |
++AAAAA+AAAAAAAAAAAA+AAAAAAAAAAA+AAAAAAAA+AAAAAAAAAAAAAAAAAAAAAAAAAAAAA+`)
+	})
+
+	t.Run("title & rows & footers", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendRows(testRows)
+		tw.AppendFooter(testFooter)
+		tw.AppendFooter(testFooter)
+		tw.SetTitle(testTitle1)
+
+		compareOutput(t, tw.Render(), `
++0000000000000000000000000000000000000000000000000000000000000000+
+| Game of Thrones                                                |
++11111+11111111+11111111111+1111111+11111111111111111111111111111+
+|   1 | Arya   | Stark     |  3000 |                             |
++66666+66666666+66666666666+6666666+66666666666666666666666666666+
+|  20 | Jon    | Snow      |  2000 | You know nothing, Jon Snow! |
++66666+66666666+66666666666+6666666+66666666666666666666666666666+
+| 300 | Tyrion | Lannister |  5000 |                             |
++88888+88888888+88888888888+8888888+88888888888888888888888888888+
+|     |        | TOTAL     | 10000 |                             |
++99999+99999999+99999999999+9999999+99999999999999999999999999999+
+|     |        | TOTAL     | 10000 |                             |
++AAAAA+AAAAAAAA+AAAAAAAAAAA+AAAAAAA+AAAAAAAAAAAAAAAAAAAAAAAAAAAAA+`)
+	})
+
+	t.Run("title & rows", func(t *testing.T) {
+		resetTable()
+
+		tw.AppendRows(testRows)
+		tw.SetTitle(testTitle1)
+
+		compareOutput(t, tw.Render(), `
++000000000000000000000000000000000000000000000000000000000000000+
+| Game of Thrones                                               |
++11111+11111111+11111111111+111111+11111111111111111111111111111+
+|   1 | Arya   | Stark     | 3000 |                             |
++66666+66666666+66666666666+666666+66666666666666666666666666666+
+|  20 | Jon    | Snow      | 2000 | You know nothing, Jon Snow! |
++66666+66666666+66666666666+666666+66666666666666666666666666666+
+| 300 | Tyrion | Lannister | 5000 |                             |
++77777+77777777+77777777777+777777+77777777777777777777777777777+`)
+	})
+}
+
+func TestTable_Render_Horizontal2(t *testing.T) {
+	tw := NewWriter()
+	tw.AppendHeader(testHeader)
+	tw.AppendRows(testRows)
+	tw.AppendFooter(testFooter)
+	tw.SetStyle(StyleDefault)
+	tw.SetTitle(testTitle1)
+	tw.Style().Box.Horizontal = &BoxStyleHorizontal{
+		TitleTop:     "-",
+		TitleBottom:  "-",
+		HeaderTop:    "-",
+		HeaderMiddle: "-",
+		HeaderBottom: "=",
+		RowTop:       "-",
+		RowMiddle:    "-",
+		RowBottom:    "-",
+		FooterTop:    "=",
+		FooterMiddle: "-",
+		FooterBottom: "-",
+	}
+	tw.Style().Options.DrawBorder = true
+	tw.Style().Options.SeparateColumns = true
+	tw.Style().Options.SeparateFooter = true
+	tw.Style().Options.SeparateHeader = true
+	tw.Style().Options.SeparateRows = true
+
+	compareOutput(t, tw.Render(), `
++---------------------------------------------------------------------+
+| Game of Thrones                                                     |
++-----+------------+-----------+--------+-----------------------------+
+|   # | FIRST NAME | LAST NAME | SALARY |                             |
++=====+============+===========+========+=============================+
+|   1 | Arya       | Stark     |   3000 |                             |
++-----+------------+-----------+--------+-----------------------------+
+|  20 | Jon        | Snow      |   2000 | You know nothing, Jon Snow! |
++-----+------------+-----------+--------+-----------------------------+
+| 300 | Tyrion     | Lannister |   5000 |                             |
++=====+============+===========+========+=============================+
+|     |            | TOTAL     |  10000 |                             |
++-----+------------+-----------+--------+-----------------------------+`)
 }
 
 func TestTable_Render_Colored(t *testing.T) {
@@ -669,6 +1114,73 @@ func TestTable_Render_Empty(t *testing.T) {
 	assert.Empty(t, tw.Render())
 }
 
+func TestTable_Render_Filtered(t *testing.T) {
+	tw := NewWriter()
+	tw.AppendHeader(testHeader)
+	tw.AppendRows(testRows)
+	tw.AppendRow(Row{11, "Sansa", "Stark", 6000})
+	tw.AppendFooter(testFooter)
+	tw.SetStyle(StyleLight)
+
+	tw.FilterBy([]FilterBy{
+		{Name: "Salary", Operator: GreaterThan, Value: 2000},
+	})
+	compareOutput(t, tw.Render(), `
+┌─────┬────────────┬───────────┬────────┐
+│   # │ FIRST NAME │ LAST NAME │ SALARY │
+├─────┼────────────┼───────────┼────────┤
+│   1 │ Arya       │ Stark     │   3000 │
+│ 300 │ Tyrion     │ Lannister │   5000 │
+│  11 │ Sansa      │ Stark     │   6000 │
+├─────┼────────────┼───────────┼────────┤
+│     │            │ TOTAL     │  10000 │
+└─────┴────────────┴───────────┴────────┘`)
+
+	tw.FilterBy([]FilterBy{
+		{Number: 3, Operator: Contains, Value: "Stark"},
+	})
+	compareOutput(t, tw.Render(), `
+┌────┬────────────┬───────────┬────────┐
+│  # │ FIRST NAME │ LAST NAME │ SALARY │
+├────┼────────────┼───────────┼────────┤
+│  1 │ Arya       │ Stark     │   3000 │
+│ 11 │ Sansa      │ Stark     │   6000 │
+├────┼────────────┼───────────┼────────┤
+│    │            │ TOTAL     │  10000 │
+└────┴────────────┴───────────┴────────┘`)
+
+	tw.FilterBy([]FilterBy{
+		{Number: 4, Operator: GreaterThan, Value: 3000},
+		{Number: 3, Operator: Contains, Value: "Stark"},
+	})
+	compareOutput(t, tw.Render(), `
+┌────┬────────────┬───────────┬────────┐
+│  # │ FIRST NAME │ LAST NAME │ SALARY │
+├────┼────────────┼───────────┼────────┤
+│ 11 │ Sansa      │ Stark     │   6000 │
+├────┼────────────┼───────────┼────────┤
+│    │            │ TOTAL     │  10000 │
+└────┴────────────┴───────────┴────────┘`)
+
+	// Test filtering with sorting
+	tw.FilterBy([]FilterBy{
+		{Number: 4, Operator: GreaterThan, Value: 2000},
+	})
+	tw.SortBy([]SortBy{
+		{Name: "Salary", Mode: DscNumeric},
+	})
+	compareOutput(t, tw.Render(), `
+┌─────┬────────────┬───────────┬────────┐
+│   # │ FIRST NAME │ LAST NAME │ SALARY │
+├─────┼────────────┼───────────┼────────┤
+│  11 │ Sansa      │ Stark     │   6000 │
+│ 300 │ Tyrion     │ Lannister │   5000 │
+│   1 │ Arya       │ Stark     │   3000 │
+├─────┼────────────┼───────────┼────────┤
+│     │            │ TOTAL     │  10000 │
+└─────┴────────────┴───────────┴────────┘`)
+}
+
 func TestTable_Render_HiddenColumns(t *testing.T) {
 	tw := NewWriter()
 	tw.AppendHeader(testHeader)
@@ -833,13 +1345,51 @@ func TestTable_Render_Reset(t *testing.T) {
 }
 
 func TestTable_Render_RowPainter(t *testing.T) {
-	tw := NewWriter()
-	tw.AppendHeader(testHeader)
-	tw.AppendRows(testRows)
-	tw.AppendRow(testRowMultiLine)
-	tw.AppendFooter(testFooter)
-	tw.SetIndexColumn(1)
-	tw.SetRowPainter(func(row Row) text.Colors {
+	runTestWithRowPainter := func(t *testing.T, rowPainter interface{}) {
+		tw := NewWriter()
+		tw.AppendHeader(testHeader)
+		tw.AppendRows(testRows)
+		tw.AppendRow(testRowMultiLine)
+		tw.AppendFooter(testFooter)
+		tw.SetIndexColumn(1)
+		tw.SetRowPainter(rowPainter)
+		tw.SetStyle(StyleLight)
+		tw.SortBy([]SortBy{{Name: "Salary", Mode: AscNumeric}})
+
+		expectedOutLines := []string{
+			"┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐",
+			"│   # │ FIRST NAME │ LAST NAME │ SALARY │                             │",
+			"├─────┼────────────┼───────────┼────────┼─────────────────────────────┤",
+			"│   0 │\x1b[41;30m Winter     \x1b[0m│\x1b[41;30m Is        \x1b[0m│\x1b[41;30m      0 \x1b[0m│\x1b[41;30m Coming.                     \x1b[0m│",
+			"│     │\x1b[41;30m            \x1b[0m│\x1b[41;30m           \x1b[0m│\x1b[41;30m        \x1b[0m│\x1b[41;30m The North Remembers!        \x1b[0m│",
+			"│     │\x1b[41;30m            \x1b[0m│\x1b[41;30m           \x1b[0m│\x1b[41;30m        \x1b[0m│\x1b[41;30m This is known.              \x1b[0m│",
+			"│  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │",
+			"│   1 │ Arya       │ Stark     │   3000 │                             │",
+			"│ 300 │\x1b[43;30m Tyrion     \x1b[0m│\x1b[43;30m Lannister \x1b[0m│\x1b[43;30m   5000 \x1b[0m│\x1b[43;30m                             \x1b[0m│",
+			"├─────┼────────────┼───────────┼────────┼─────────────────────────────┤",
+			"│     │            │ TOTAL     │  10000 │                             │",
+			"└─────┴────────────┴───────────┴────────┴─────────────────────────────┘",
+		}
+		expectedOut := strings.Join(expectedOutLines, "\n")
+		assert.Equal(t, expectedOut, tw.Render())
+
+		tw.SetStyle(StyleColoredBright)
+		tw.Style().Color.RowAlternate = tw.Style().Color.Row
+		expectedOutLines = []string{
+			"\x1b[106;30m   # \x1b[0m\x1b[106;30m FIRST NAME \x1b[0m\x1b[106;30m LAST NAME \x1b[0m\x1b[106;30m SALARY \x1b[0m\x1b[106;30m                             \x1b[0m",
+			"\x1b[106;30m   0 \x1b[0m\x1b[41;30m Winter     \x1b[0m\x1b[41;30m Is        \x1b[0m\x1b[41;30m      0 \x1b[0m\x1b[41;30m Coming.                     \x1b[0m",
+			"\x1b[106;30m     \x1b[0m\x1b[41;30m            \x1b[0m\x1b[41;30m           \x1b[0m\x1b[41;30m        \x1b[0m\x1b[41;30m The North Remembers!        \x1b[0m",
+			"\x1b[106;30m     \x1b[0m\x1b[41;30m            \x1b[0m\x1b[41;30m           \x1b[0m\x1b[41;30m        \x1b[0m\x1b[41;30m This is known.              \x1b[0m",
+			"\x1b[106;30m  20 \x1b[0m\x1b[107;30m Jon        \x1b[0m\x1b[107;30m Snow      \x1b[0m\x1b[107;30m   2000 \x1b[0m\x1b[107;30m You know nothing, Jon Snow! \x1b[0m",
+			"\x1b[106;30m   1 \x1b[0m\x1b[107;30m Arya       \x1b[0m\x1b[107;30m Stark     \x1b[0m\x1b[107;30m   3000 \x1b[0m\x1b[107;30m                             \x1b[0m",
+			"\x1b[106;30m 300 \x1b[0m\x1b[43;30m Tyrion     \x1b[0m\x1b[43;30m Lannister \x1b[0m\x1b[43;30m   5000 \x1b[0m\x1b[43;30m                             \x1b[0m",
+			"\x1b[46;30m     \x1b[0m\x1b[46;30m            \x1b[0m\x1b[46;30m TOTAL     \x1b[0m\x1b[46;30m  10000 \x1b[0m\x1b[46;30m                             \x1b[0m",
+		}
+		expectedOut = strings.Join(expectedOutLines, "\n")
+		assert.Equal(t, expectedOut, tw.Render())
+	}
+
+	rowPainter := func(row Row) text.Colors {
 		if salary, ok := row[3].(int); ok {
 			if salary > 3000 {
 				return text.Colors{text.BgYellow, text.FgBlack}
@@ -848,40 +1398,64 @@ func TestTable_Render_RowPainter(t *testing.T) {
 			}
 		}
 		return nil
+	}
+	t.Run("RowPainter 1", func(t *testing.T) {
+		runTestWithRowPainter(t, rowPainter)
 	})
-	tw.SetStyle(StyleLight)
-	tw.SortBy([]SortBy{{Name: "Salary", Mode: AscNumeric}})
+	t.Run("RowPainter 2", func(t *testing.T) {
+		runTestWithRowPainter(t, RowPainter(rowPainter))
+	})
 
+	rowPainterWithAttributes := func(row Row, attr RowAttributes) text.Colors {
+		assert.NotZero(t, attr.Number)
+		assert.NotZero(t, attr.NumberSorted)
+		return rowPainter(row)
+	}
+	t.Run("RowPainterWithAttributes 1", func(t *testing.T) {
+		runTestWithRowPainter(t, rowPainterWithAttributes)
+	})
+	t.Run("RowPainterWithAttributes 2", func(t *testing.T) {
+		runTestWithRowPainter(t, RowPainterWithAttributes(rowPainterWithAttributes))
+	})
+}
+
+func TestTable_Render_RowPainter_NoSorting(t *testing.T) {
+	tw := NewWriter()
+	tw.AppendHeader(Row{"#", "FIRST NAME", "LAST NAME", "SALARY"})
+	tw.AppendRows([]Row{
+		{1, "Arya", "Stark", 3000},
+		{20, "Jon", "Snow", 2000},
+		{300, "Tyrion", "Lannister", 5000},
+	})
+	tw.AppendFooter(Row{"", "", "TOTAL", 10000})
+	tw.SetStyle(StyleLight)
+
+	// Row painter: color rows based on salary (no sorting)
+	rowPainter := func(row Row) text.Colors {
+		if salary, ok := row[3].(int); ok {
+			if salary > 3000 {
+				return text.Colors{text.BgYellow, text.FgBlack}
+			} else if salary < 2000 {
+				return text.Colors{text.BgRed, text.FgBlack}
+			}
+		}
+		return nil
+	}
+	tw.SetRowPainter(rowPainter)
+
+	// Rows should appear in original order (not sorted)
 	expectedOutLines := []string{
-		"┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐",
-		"│   # │ FIRST NAME │ LAST NAME │ SALARY │                             │",
-		"├─────┼────────────┼───────────┼────────┼─────────────────────────────┤",
-		"│   0 │\x1b[41;30m Winter     \x1b[0m│\x1b[41;30m Is        \x1b[0m│\x1b[41;30m      0 \x1b[0m│\x1b[41;30m Coming.                     \x1b[0m│",
-		"│     │\x1b[41;30m            \x1b[0m│\x1b[41;30m           \x1b[0m│\x1b[41;30m        \x1b[0m│\x1b[41;30m The North Remembers!        \x1b[0m│",
-		"│     │\x1b[41;30m            \x1b[0m│\x1b[41;30m           \x1b[0m│\x1b[41;30m        \x1b[0m│\x1b[41;30m This is known.              \x1b[0m│",
-		"│  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │",
-		"│   1 │ Arya       │ Stark     │   3000 │                             │",
-		"│ 300 │\x1b[43;30m Tyrion     \x1b[0m│\x1b[43;30m Lannister \x1b[0m│\x1b[43;30m   5000 \x1b[0m│\x1b[43;30m                             \x1b[0m│",
-		"├─────┼────────────┼───────────┼────────┼─────────────────────────────┤",
-		"│     │            │ TOTAL     │  10000 │                             │",
-		"└─────┴────────────┴───────────┴────────┴─────────────────────────────┘",
+		"┌─────┬────────────┬───────────┬────────┐",
+		"│   # │ FIRST NAME │ LAST NAME │ SALARY │",
+		"├─────┼────────────┼───────────┼────────┤",
+		"│   1 │ Arya       │ Stark     │   3000 │",
+		"│  20 │ Jon        │ Snow      │   2000 │",
+		"│\x1b[43;30m 300 \x1b[0m│\x1b[43;30m Tyrion     \x1b[0m│\x1b[43;30m Lannister \x1b[0m│\x1b[43;30m   5000 \x1b[0m│",
+		"├─────┼────────────┼───────────┼────────┤",
+		"│     │            │ TOTAL     │  10000 │",
+		"└─────┴────────────┴───────────┴────────┘",
 	}
 	expectedOut := strings.Join(expectedOutLines, "\n")
-	assert.Equal(t, expectedOut, tw.Render())
-
-	tw.SetStyle(StyleColoredBright)
-	tw.Style().Color.RowAlternate = tw.Style().Color.Row
-	expectedOutLines = []string{
-		"\x1b[106;30m   # \x1b[0m\x1b[106;30m FIRST NAME \x1b[0m\x1b[106;30m LAST NAME \x1b[0m\x1b[106;30m SALARY \x1b[0m\x1b[106;30m                             \x1b[0m",
-		"\x1b[106;30m   0 \x1b[0m\x1b[41;30m Winter     \x1b[0m\x1b[41;30m Is        \x1b[0m\x1b[41;30m      0 \x1b[0m\x1b[41;30m Coming.                     \x1b[0m",
-		"\x1b[106;30m     \x1b[0m\x1b[41;30m            \x1b[0m\x1b[41;30m           \x1b[0m\x1b[41;30m        \x1b[0m\x1b[41;30m The North Remembers!        \x1b[0m",
-		"\x1b[106;30m     \x1b[0m\x1b[41;30m            \x1b[0m\x1b[41;30m           \x1b[0m\x1b[41;30m        \x1b[0m\x1b[41;30m This is known.              \x1b[0m",
-		"\x1b[106;30m  20 \x1b[0m\x1b[107;30m Jon        \x1b[0m\x1b[107;30m Snow      \x1b[0m\x1b[107;30m   2000 \x1b[0m\x1b[107;30m You know nothing, Jon Snow! \x1b[0m",
-		"\x1b[106;30m   1 \x1b[0m\x1b[107;30m Arya       \x1b[0m\x1b[107;30m Stark     \x1b[0m\x1b[107;30m   3000 \x1b[0m\x1b[107;30m                             \x1b[0m",
-		"\x1b[106;30m 300 \x1b[0m\x1b[43;30m Tyrion     \x1b[0m\x1b[43;30m Lannister \x1b[0m\x1b[43;30m   5000 \x1b[0m\x1b[43;30m                             \x1b[0m",
-		"\x1b[46;30m     \x1b[0m\x1b[46;30m            \x1b[0m\x1b[46;30m TOTAL     \x1b[0m\x1b[46;30m  10000 \x1b[0m\x1b[46;30m                             \x1b[0m",
-	}
-	expectedOut = strings.Join(expectedOutLines, "\n")
 	assert.Equal(t, expectedOut, tw.Render())
 }
 
@@ -1180,7 +1754,6 @@ func TestTable_Render_SuppressEmptyColumns(t *testing.T) {
 		"\u202a \u202a11\u202aSansa       \u202a6000                           ",
 		"\u202a   \u202a\u202a           \u202a10000                           ",
 	}, "\n"))
-
 }
 
 func TestTable_Render_TableWithinTable(t *testing.T) {
@@ -1296,29 +1869,6 @@ func TestTable_Render_SetWidth_Title(t *testing.T) {
 	})
 }
 
-func TestTable_Render_WidthEnforcer(t *testing.T) {
-	tw := NewWriter()
-	tw.AppendRows([]Row{
-		{"U2", "Hey", "2021-04-19 13:37", "Yuh yuh yuh"},
-		{"S12", "Uhhhh", "2021-04-19 13:37", "Some dummy data here"},
-		{"R123", "Lobsters", "2021-04-19 13:37", "I like lobsters"},
-		{"R123", "Some big name here and it's pretty big", "2021-04-19 13:37", "Abcdefghijklmnopqrstuvwxyz"},
-		{"R123", "Small name", "2021-04-19 13:37", "Abcdefghijklmnopqrstuvwxyz"},
-	})
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 2, WidthMax: 20, WidthMaxEnforcer: text.Trim},
-	})
-
-	compareOutput(t, tw.Render(), `
-+------+----------------------+------------------+----------------------------+
-| U2   | Hey                  | 2021-04-19 13:37 | Yuh yuh yuh                |
-| S12  | Uhhhh                | 2021-04-19 13:37 | Some dummy data here       |
-| R123 | Lobsters             | 2021-04-19 13:37 | I like lobsters            |
-| R123 | Some big name here a | 2021-04-19 13:37 | Abcdefghijklmnopqrstuvwxyz |
-| R123 | Small name           | 2021-04-19 13:37 | Abcdefghijklmnopqrstuvwxyz |
-+------+----------------------+------------------+----------------------------+`)
-}
-
 func TestTable_Render_SuppressTrailingSpaces(t *testing.T) {
 	tw := NewWriter()
 	tw.AppendHeader(testHeader2)
@@ -1353,185 +1903,58 @@ func TestTable_Render_SuppressTrailingSpaces(t *testing.T) {
  R123  Small name                              2021-04-19 13:37  Abcdefghijklmnopqrstuvwxyz`)
 }
 
-func TestTable_Render_AutoWidth(t *testing.T) {
-	tw := NewWriter()
-	tw.AppendHeader(testHeader)
-	tw.AppendRows(testRows)
-	tw.AppendFooter(testFooter)
-	tw.SetStyle(StyleLight)
-	compareOutput(t, tw.Render(), `
-┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐
-│   # │ FIRST NAME │ LAST NAME │ SALARY │                             │
-├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
-│   1 │ Arya       │ Stark     │   3000 │                             │
-│  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │
-│ 300 │ Tyrion     │ Lannister │   5000 │                             │
-├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
-│     │            │ TOTAL     │  10000 │                             │
-└─────┴────────────┴───────────┴────────┴─────────────────────────────┘`)
+func TestTable_Render_WidthEnforcer(t *testing.T) {
+	t.Run("regular characters", func(t *testing.T) {
+		tw := NewWriter()
+		tw.AppendRows([]Row{
+			{"U2", "Hey", "2021-04-19 13:37", "Yuh yuh yuh"},
+			{"S12", "Uhhhh", "2021-04-19 13:37", "Some dummy data here"},
+			{"R123", "Lobsters", "2021-04-19 13:37", "I like lobsters"},
+			{"R123", "Some big name here and it's pretty big", "2021-04-19 13:37", "Abcdefghijklmnopqrstuvwxyz"},
+			{"R123", "Small name", "2021-04-19 13:37", "Abcdefghijklmnopqrstuvwxyz"},
+		})
+		tw.SetColumnConfigs([]ColumnConfig{
+			{Number: 2, WidthMax: 20, WidthMaxEnforcer: text.Trim},
+		})
 
-	tw.SetTitle("Game of Thrones")
-	tw.Style().Size = SizeOptions{
-		WidthMax: 0,
-		WidthMin: 100,
-	}
-	compareOutput(t, tw.Render(), `
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ Game of Thrones                                                                                  │
-├───────────┬──────────────────┬─────────────────┬──────────────┬──────────────────────────────────┤
-│         # │ FIRST NAME       │ LAST NAME       │       SALARY │                                  │
-├───────────┼──────────────────┼─────────────────┼──────────────┼──────────────────────────────────┤
-│         1 │ Arya             │ Stark           │         3000 │                                  │
-│        20 │ Jon              │ Snow            │         2000 │ You know nothing, Jon Snow!      │
-│       300 │ Tyrion           │ Lannister       │         5000 │                                  │
-├───────────┼──────────────────┼─────────────────┼──────────────┼──────────────────────────────────┤
-│           │                  │ TOTAL           │        10000 │                                  │
-└───────────┴──────────────────┴─────────────────┴──────────────┴──────────────────────────────────┘`)
-
-	tw.SetTitle("")
-	tw.Style().Size = SizeOptions{
-		WidthMax: 0,
-		WidthMin: 120,
-	}
-	compareOutput(t, tw.Render(), `
-┌───────────────┬──────────────────────┬─────────────────────┬──────────────────┬──────────────────────────────────────┐
-│             # │ FIRST NAME           │ LAST NAME           │           SALARY │                                      │
-├───────────────┼──────────────────────┼─────────────────────┼──────────────────┼──────────────────────────────────────┤
-│             1 │ Arya                 │ Stark               │             3000 │                                      │
-│            20 │ Jon                  │ Snow                │             2000 │ You know nothing, Jon Snow!          │
-│           300 │ Tyrion               │ Lannister           │             5000 │                                      │
-├───────────────┼──────────────────────┼─────────────────────┼──────────────────┼──────────────────────────────────────┤
-│               │                      │ TOTAL               │            10000 │                                      │
-└───────────────┴──────────────────────┴─────────────────────┴──────────────────┴──────────────────────────────────────┘`)
-
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 1, WidthMax: 4},
+		compareOutput(t, tw.Render(), `
++------+----------------------+------------------+----------------------------+
+| U2   | Hey                  | 2021-04-19 13:37 | Yuh yuh yuh                |
+| S12  | Uhhhh                | 2021-04-19 13:37 | Some dummy data here       |
+| R123 | Lobsters             | 2021-04-19 13:37 | I like lobsters            |
+| R123 | Some big name here a | 2021-04-19 13:37 | Abcdefghijklmnopqrstuvwxyz |
+| R123 | Small name           | 2021-04-19 13:37 | Abcdefghijklmnopqrstuvwxyz |
++------+----------------------+------------------+----------------------------+`)
 	})
-	compareOutput(t, tw.Render(), `
-┌──────┬────────────────────────┬───────────────────────┬────────────────────┬─────────────────────────────────────────┐
-│    # │ FIRST NAME             │ LAST NAME             │             SALARY │                                         │
-├──────┼────────────────────────┼───────────────────────┼────────────────────┼─────────────────────────────────────────┤
-│    1 │ Arya                   │ Stark                 │               3000 │                                         │
-│   20 │ Jon                    │ Snow                  │               2000 │ You know nothing, Jon Snow!             │
-│  300 │ Tyrion                 │ Lannister             │               5000 │                                         │
-├──────┼────────────────────────┼───────────────────────┼────────────────────┼─────────────────────────────────────────┤
-│      │                        │ TOTAL                 │              10000 │                                         │
-└──────┴────────────────────────┴───────────────────────┴────────────────────┴─────────────────────────────────────────┘`)
 
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 1, WidthMax: 4},
-		{Number: 2, WidthMax: 10},
+	t.Run("wide characters", func(t *testing.T) {
+		tw := NewWriter()
+		tw.AppendHeader(Row{"#", "WrapSoft", "WrapHard", "WrapText"})
+		tw.AppendRows([]Row{
+			{1, "abcd甲乙丙丁abcd", "abcd甲乙丙丁abcd", "abcd甲乙丙丁abcd"},
+			{2, "abcdabcdabcd abcdabcd abcd", "abcdabcdabcd abcdabcd abcd", "abcdabcdabcd abcdabcd abcd"},
+			{3, "甲乙丙丁甲乙丙丁甲乙丙丁", "甲乙丙丁甲乙丙丁甲乙丙丁", "甲乙丙丁甲乙丙丁甲乙丙丁"},
+		})
+		tw.SetColumnConfigs([]ColumnConfig{
+			{Name: "WrapSoft", WidthMax: 10, WidthMaxEnforcer: text.WrapSoft},
+			{Name: "WrapHard", WidthMax: 10, WidthMaxEnforcer: text.WrapHard},
+			{Name: "WrapText", WidthMax: 10, WidthMaxEnforcer: text.WrapText},
+		})
+		tw.Style().Format.Header = text.FormatDefault
+
+		compareOutput(t, tw.Render(), `
++---+------------+------------+------------+
+| # | WrapSoft   | WrapHard   | WrapText   |
++---+------------+------------+------------+
+| 1 | abcd甲乙丙 | abcd甲乙丙 | abcd甲乙丙 |
+|   | 丁abcd     | 丁abcd     | 丁abcd     |
+| 2 | abcdabcdab | abcdabcdab | abcdabcdab |
+|   | cd         | cd abcdabc | cd abcdabc |
+|   | abcdabcd   | d abcd     | d abcd     |
+|   | abcd       |            |            |
+| 3 | 甲乙丙丁甲 | 甲乙丙丁甲 | 甲乙丙丁甲 |
+|   | 乙丙丁甲乙 | 乙丙丁甲乙 | 乙丙丁甲乙 |
+|   | 丙丁       | 丙丁       | 丙丁       |
++---+------------+------------+------------+`)
 	})
-	compareOutput(t, tw.Render(), `
-┌──────┬────────────┬───────────────────────────┬────────────────────────┬─────────────────────────────────────────────┐
-│    # │ FIRST NAME │ LAST NAME                 │                 SALARY │                                             │
-├──────┼────────────┼───────────────────────────┼────────────────────────┼─────────────────────────────────────────────┤
-│    1 │ Arya       │ Stark                     │                   3000 │                                             │
-│   20 │ Jon        │ Snow                      │                   2000 │ You know nothing, Jon Snow!                 │
-│  300 │ Tyrion     │ Lannister                 │                   5000 │                                             │
-├──────┼────────────┼───────────────────────────┼────────────────────────┼─────────────────────────────────────────────┤
-│      │            │ TOTAL                     │                  10000 │                                             │
-└──────┴────────────┴───────────────────────────┴────────────────────────┴─────────────────────────────────────────────┘`)
-
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 1, WidthMax: 4},
-		{Number: 2, WidthMax: 10},
-		{Number: 3, WidthMax: 10},
-	})
-	compareOutput(t, tw.Render(), `
-┌──────┬────────────┬────────────┬────────────────────────────────┬────────────────────────────────────────────────────┐
-│    # │ FIRST NAME │ LAST NAME  │                         SALARY │                                                    │
-├──────┼────────────┼────────────┼────────────────────────────────┼────────────────────────────────────────────────────┤
-│    1 │ Arya       │ Stark      │                           3000 │                                                    │
-│   20 │ Jon        │ Snow       │                           2000 │ You know nothing, Jon Snow!                        │
-│  300 │ Tyrion     │ Lannister  │                           5000 │                                                    │
-├──────┼────────────┼────────────┼────────────────────────────────┼────────────────────────────────────────────────────┤
-│      │            │ TOTAL      │                          10000 │                                                    │
-└──────┴────────────┴────────────┴────────────────────────────────┴────────────────────────────────────────────────────┘`)
-
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 1, WidthMax: 4},
-		{Number: 2, WidthMax: 10},
-		{Number: 3, WidthMax: 10},
-		{Number: 4, WidthMax: 6},
-	})
-	compareOutput(t, tw.Render(), `
-┌──────┬────────────┬────────────┬────────┬────────────────────────────────────────────────────────────────────────────┐
-│    # │ FIRST NAME │ LAST NAME  │ SALARY │                                                                            │
-├──────┼────────────┼────────────┼────────┼────────────────────────────────────────────────────────────────────────────┤
-│    1 │ Arya       │ Stark      │   3000 │                                                                            │
-│   20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow!                                                │
-│  300 │ Tyrion     │ Lannister  │   5000 │                                                                            │
-├──────┼────────────┼────────────┼────────┼────────────────────────────────────────────────────────────────────────────┤
-│      │            │ TOTAL      │  10000 │                                                                            │
-└──────┴────────────┴────────────┴────────┴────────────────────────────────────────────────────────────────────────────┘`)
-
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 1, WidthMax: 4},
-		{Number: 2, WidthMax: 10},
-		{Number: 3, WidthMax: 10},
-		{Number: 4, WidthMax: 6},
-		{Number: 5, WidthMax: 27},
-	})
-	compareOutput(t, tw.Render(), `
-┌──────┬────────────┬────────────┬────────┬─────────────────────────────┐
-│    # │ FIRST NAME │ LAST NAME  │ SALARY │                             │
-├──────┼────────────┼────────────┼────────┼─────────────────────────────┤
-│    1 │ Arya       │ Stark      │   3000 │                             │
-│   20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow! │
-│  300 │ Tyrion     │ Lannister  │   5000 │                             │
-├──────┼────────────┼────────────┼────────┼─────────────────────────────┤
-│      │            │ TOTAL      │  10000 │                             │
-└──────┴────────────┴────────────┴────────┴─────────────────────────────┘`)
-
-	tw.SetColumnConfigs([]ColumnConfig{
-		{Number: 2, WidthMax: 10},
-		{Number: 3, WidthMax: 10},
-		{Number: 4, WidthMax: 6},
-		{Number: 5, WidthMax: 27},
-	})
-	compareOutput(t, tw.Render(), `
-┌─────────────────────────────────────────────────────┬────────────┬────────────┬────────┬─────────────────────────────┐
-│                                                   # │ FIRST NAME │ LAST NAME  │ SALARY │                             │
-├─────────────────────────────────────────────────────┼────────────┼────────────┼────────┼─────────────────────────────┤
-│                                                   1 │ Arya       │ Stark      │   3000 │                             │
-│                                                  20 │ Jon        │ Snow       │   2000 │ You know nothing, Jon Snow! │
-│                                                 300 │ Tyrion     │ Lannister  │   5000 │                             │
-├─────────────────────────────────────────────────────┼────────────┼────────────┼────────┼─────────────────────────────┤
-│                                                     │            │ TOTAL      │  10000 │                             │
-└─────────────────────────────────────────────────────┴────────────┴────────────┴────────┴─────────────────────────────┘`)
-
-	tw.SetColumnConfigs(nil)
-	tw.Style().Size = SizeOptions{
-		WidthMax: 60,
-		WidthMin: 0,
-	}
-	compareOutput(t, tw.Render(), `
-┌─────┬────────────┬───────────┬────────┬───────────────── ≈
-│   # │ FIRST NAME │ LAST NAME │ SALARY │                  ≈
-├─────┼────────────┼───────────┼────────┼───────────────── ≈
-│   1 │ Arya       │ Stark     │   3000 │                  ≈
-│  20 │ Jon        │ Snow      │   2000 │ You know nothing ≈
-│ 300 │ Tyrion     │ Lannister │   5000 │                  ≈
-├─────┼────────────┼───────────┼────────┼───────────────── ≈
-│     │            │ TOTAL     │  10000 │                  ≈
-└─────┴────────────┴───────────┴────────┴───────────────── ≈`)
-
-	// expanded columns, but truncated row - not a valid usage scenario;
-	// no enforcement on min < max at this point
-	tw.SetColumnConfigs(nil)
-	tw.Style().Size = SizeOptions{
-		WidthMax: 60,
-		WidthMin: 80,
-	}
-	compareOutput(t, tw.Render(), `
-┌───────┬──────────────┬─────────────┬──────────┬───────── ≈
-│     # │ FIRST NAME   │ LAST NAME   │   SALARY │          ≈
-├───────┼──────────────┼─────────────┼──────────┼───────── ≈
-│     1 │ Arya         │ Stark       │     3000 │          ≈
-│    20 │ Jon          │ Snow        │     2000 │ You know ≈
-│   300 │ Tyrion       │ Lannister   │     5000 │          ≈
-├───────┼──────────────┼─────────────┼──────────┼───────── ≈
-│       │              │ TOTAL       │    10000 │          ≈
-└───────┴──────────────┴─────────────┴──────────┴───────── ≈`)
 }

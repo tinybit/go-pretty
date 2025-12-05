@@ -332,13 +332,13 @@ func (p *Progress) initForRender() {
 	// calculate length of the actual progress bar by discounting the left/right
 	// border/box chars
 	p.lengthProgress = p.lengthTracker -
-		text.RuneWidthWithoutEscSequences(p.style.Chars.BoxLeft) -
-		text.RuneWidthWithoutEscSequences(p.style.Chars.BoxRight)
+		text.StringWidthWithoutEscSequences(p.style.Chars.BoxLeft) -
+		text.StringWidthWithoutEscSequences(p.style.Chars.BoxRight)
 	p.lengthProgressOverall = p.lengthMessage +
-		text.RuneWidthWithoutEscSequences(p.style.Options.Separator) +
+		text.StringWidthWithoutEscSequences(p.style.Options.Separator) +
 		p.lengthProgress + 1
 	if p.style.Visibility.Percentage {
-		p.lengthProgressOverall += text.RuneWidthWithoutEscSequences(
+		p.lengthProgressOverall += text.StringWidthWithoutEscSequences(
 			fmt.Sprintf(p.style.Options.PercentFormat, 0.0),
 		)
 	}
@@ -353,9 +353,11 @@ func (p *Progress) initForRender() {
 		p.updateFrequency = DefaultUpdateFrequency
 	}
 
-	// get the current terminal size for preventing roll-overs, and do this in a
-	// background loop until end of render
-	go p.watchTerminalSize() // needs p.updateFrequency
+	if p.outputWriter == os.Stdout {
+		// get the current terminal size for preventing roll-overs, and do this in a
+		// background loop until end of render. This only works if the output writer is STDOUT.
+		go p.watchTerminalSize() // needs p.updateFrequency
+	}
 }
 
 func (p *Progress) updateTerminalSize() {
@@ -385,4 +387,5 @@ type renderHint struct {
 	hideTime         bool // hide the time
 	hideValue        bool // hide the value
 	isOverallTracker bool // is the Overall Progress tracker
+	terminalWidth    int  // cached terminal width for this render cycle
 }

@@ -94,19 +94,33 @@ func TestOverrideRuneWidthEastAsianWidth(t *testing.T) {
 		rwCondition.EastAsianWidth = originalValue
 	}()
 
+	// Box drawing characters (U+2500-U+257F) are now always reported as width 1,
+	// regardless of the EastAsianWidth setting. This fixes alignment issues
+	// that previously occurred when LANG was set to something like 'zh_CN.UTF-8'.
+	// Previously, '╋' would be reported as width 2 when EastAsianWidth was true.
 	OverrideRuneWidthEastAsianWidth(true)
-	assert.Equal(t, 2, RuneWidthWithoutEscSequences("╋"))
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("╋"), "Box drawing character should always be width 1, even when EastAsianWidth is true")
 	OverrideRuneWidthEastAsianWidth(false)
-	assert.Equal(t, 1, RuneWidthWithoutEscSequences("╋"))
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("╋"), "Box drawing character should always be width 1, even when EastAsianWidth is false")
 
-	// Note for posterity. We want the length of the box drawing character to
-	// be reported as 1. However, with an environment where LANG is set to
-	// something like 'zh_CN.UTF-8', the value being returned is 2, which breaks
-	// text alignment/padding logic in this library.
-	//
-	// If a future version of runewidth is able to address this internally and
-	// return 1 for the above, the function being tested can be marked for
-	// deprecation.
+	// Verify that block elements (U+2580-U+259F) are also handled correctly.
+	// These are used in progress indicators and should always be width 1.
+	OverrideRuneWidthEastAsianWidth(true)
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("█"), "Block element should always be width 1, even when EastAsianWidth is true")
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("▒"), "Block element should always be width 1, even when EastAsianWidth is true")
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("▓"), "Block element should always be width 1, even when EastAsianWidth is true")
+	OverrideRuneWidthEastAsianWidth(false)
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("█"), "Block element should always be width 1, even when EastAsianWidth is false")
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("▒"), "Block element should always be width 1, even when EastAsianWidth is false")
+	assert.Equal(t, 1, StringWidthWithoutEscSequences("▓"), "Block element should always be width 1, even when EastAsianWidth is false")
+
+	// Verify that actual East Asian characters are still handled correctly.
+	// Note: The runewidth library reports 'ツ' as width 2 regardless of the
+	// EastAsianWidth setting, as it's inherently a full-width character.
+	OverrideRuneWidthEastAsianWidth(true)
+	assert.Equal(t, 2, StringWidthWithoutEscSequences("ツ"), "East Asian character should be width 2")
+	OverrideRuneWidthEastAsianWidth(false)
+	assert.Equal(t, 2, StringWidthWithoutEscSequences("ツ"), "East Asian character should be width 2")
 }
 
 func ExamplePad() {
@@ -282,6 +296,48 @@ func TestSnip(t *testing.T) {
 	assert.Equal(t, "\x1b[33m\x1b]8;;http://example.com\x1b\\Gh\x1b]8;;\x1b\\\x1b[0m~", Snip("\x1b[33m\x1b]8;;http://example.com\x1b\\Ghost\x1b]8;;\x1b\\\x1b[0m", 3, "~"))
 }
 
+func ExampleStringWidth() {
+	fmt.Printf("StringWidth(\"Ghost 生命\"): %d\n", StringWidth("Ghost 生命"))
+	fmt.Printf("StringWidth(\"\\x1b[33mGhost 生命\\x1b[0m\"): %d\n", StringWidth("\x1b[33mGhost 生命\x1b[0m"))
+
+	// Output: StringWidth("Ghost 生命"): 10
+	// StringWidth("\x1b[33mGhost 生命\x1b[0m"): 17
+}
+
+func TestStringWidth(t *testing.T) {
+	assert.Equal(t, 10, StringWidth("Ghost 生命"))
+	assert.Equal(t, 17, StringWidth("\x1b[33mGhost 生命\x1b[0m"))
+}
+
+func ExampleStringWidthWithoutEscSequences() {
+	fmt.Printf("StringWidthWithoutEscSequences(\"\"): %d\n", StringWidthWithoutEscSequences(""))
+	fmt.Printf("StringWidthWithoutEscSequences(\"Ghost\"): %d\n", StringWidthWithoutEscSequences("Ghost"))
+	fmt.Printf("StringWidthWithoutEscSequences(\"Ghostツ\"): %d\n", StringWidthWithoutEscSequences("Ghostツ"))
+	fmt.Printf("StringWidthWithoutEscSequences(\"\\x1b[33mGhost\\x1b[0m\"): %d\n", StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0m"))
+	fmt.Printf("StringWidthWithoutEscSequences(\"\\x1b[33mGhost\\x1b[0\"): %d\n", StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0"))
+	fmt.Printf("StringWidthWithoutEscSequences(\"Ghost 生命\"): %d\n", StringWidthWithoutEscSequences("Ghost 生命"))
+	fmt.Printf("StringWidthWithoutEscSequences(\"\\x1b[33mGhost 生命\\x1b[0m\"): %d\n", StringWidthWithoutEscSequences("\x1b[33mGhost 生命\x1b[0m"))
+
+	// Output: StringWidthWithoutEscSequences(""): 0
+	// StringWidthWithoutEscSequences("Ghost"): 5
+	// StringWidthWithoutEscSequences("Ghostツ"): 7
+	// StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0m"): 5
+	// StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0"): 5
+	// StringWidthWithoutEscSequences("Ghost 生命"): 10
+	// StringWidthWithoutEscSequences("\x1b[33mGhost 生命\x1b[0m"): 10
+}
+
+func TestStringWidthWithoutEscSequences(t *testing.T) {
+	assert.Equal(t, 0, StringWidthWithoutEscSequences(""))
+	assert.Equal(t, 5, StringWidthWithoutEscSequences("Ghost"))
+	assert.Equal(t, 7, StringWidthWithoutEscSequences("Ghostツ"))
+	assert.Equal(t, 5, StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0m"))
+	assert.Equal(t, 5, StringWidthWithoutEscSequences("\x1b[33mGhost\x1b[0"))
+	assert.Equal(t, 5, StringWidthWithoutEscSequences("\x1b]8;;http://example.com\x1b\\Ghost\x1b]8;;\x1b\\"))
+	assert.Equal(t, 10, StringWidthWithoutEscSequences("Ghost 生命"))
+	assert.Equal(t, 10, StringWidthWithoutEscSequences("\x1b[33mGhost 生命\x1b[0m"))
+}
+
 func ExampleTrim() {
 	fmt.Printf("Trim(\"Ghost\", 0): %#v\n", Trim("Ghost", 0))
 	fmt.Printf("Trim(\"Ghost\", 3): %#v\n", Trim("Ghost", 3))
@@ -305,4 +361,17 @@ func TestTrim(t *testing.T) {
 	assert.Equal(t, "\x1b[33mGho\x1b[0m", Trim("\x1b[33mGhost\x1b[0m", 3))
 	assert.Equal(t, "\x1b[33mGhost\x1b[0m", Trim("\x1b[33mGhost\x1b[0m", 6))
 	assert.Equal(t, "\x1b]8;;http://example.com\x1b\\Gho\x1b]8;;\x1b\\", Trim("\x1b]8;;http://example.com\x1b\\Ghost\x1b]8;;\x1b\\", 3))
+}
+
+func ExampleWiden() {
+	fmt.Printf("Widen(\"Ghost 生命\"): %#v\n", Widen("Ghost 生命"))
+	fmt.Printf("Widen(\"\\x1b[33mGhost 生命\\x1b[0m\"): %#v\n", Widen("\x1b[33mGhost 生命\x1b[0m"))
+
+	// Output: Widen("Ghost 生命"): "Ｇｈｏｓｔ\u3000生命"
+	// Widen("\x1b[33mGhost 生命\x1b[0m"): "\x1b[33mＧｈｏｓｔ\u3000生命\x1b[0m"
+}
+
+func TestWiden(t *testing.T) {
+	assert.Equal(t, "Ｇｈｏｓｔ　生命", Widen("Ghost 生命"))
+	assert.Equal(t, "\x1b[33mＧｈｏｓｔ　生命\x1b[0m", Widen("\x1b[33mGhost 生命\x1b[0m"))
 }

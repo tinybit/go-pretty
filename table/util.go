@@ -1,7 +1,10 @@
 package table
 
 import (
+	"fmt"
 	"reflect"
+	"sort"
+	"strconv"
 )
 
 // AutoIndexColumnID returns a unique Column ID/Name for the given Column Number.
@@ -25,6 +28,48 @@ func widthEnforcerNone(col string, _ int) string {
 	return col
 }
 
+// convertValueToString converts a value to string using fast type assertions
+// for common numeric types before falling back to fmt.Sprint.
+//
+//gocyclo:ignore
+func convertValueToString(v interface{}) string {
+	switch val := v.(type) {
+	case int:
+		return strconv.FormatInt(int64(val), 10)
+	case int8:
+		return strconv.FormatInt(int64(val), 10)
+	case int16:
+		return strconv.FormatInt(int64(val), 10)
+	case int32:
+		return strconv.FormatInt(int64(val), 10)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
+	case float32:
+		return strconv.FormatFloat(float64(val), 'g', -1, 32)
+	case float64:
+		return strconv.FormatFloat(val, 'g', -1, 64)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case string:
+		return val
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
 // isNumber returns true if the argument is a numeric type; false otherwise.
 func isNumber(x interface{}) bool {
 	if x == nil {
@@ -40,30 +85,63 @@ func isNumber(x interface{}) bool {
 	return false
 }
 
-type mergedColumnIndices map[int]map[int]bool
+type mergedColumnIndices map[int]int
 
-func (m mergedColumnIndices) mergedLength(colIdx int, maxColumnLengths []int) int {
-	mergedLength := maxColumnLengths[colIdx]
-	for otherColIdx := range m[colIdx] {
-		mergedLength += maxColumnLengths[otherColIdx]
+func objAsSlice(in interface{}) []interface{} {
+	var out []interface{}
+	if in != nil {
+		// dereference pointers
+		val := reflect.ValueOf(in)
+		if val.Kind() == reflect.Ptr && !val.IsNil() {
+			in = val.Elem().Interface()
+		}
+
+		if objIsSlice(in) {
+			v := reflect.ValueOf(in)
+			for i := 0; i < v.Len(); i++ {
+				// dereference pointers
+				v2 := v.Index(i)
+				if v2.Kind() == reflect.Ptr && !v2.IsNil() {
+					v2 = reflect.ValueOf(v2.Elem().Interface())
+				}
+
+				out = append(out, v2.Interface())
+			}
+		}
 	}
-	return mergedLength
+
+	// remove trailing nil pointers
+	tailIdx := len(out)
+	for i := len(out) - 1; i >= 0; i-- {
+		val := reflect.ValueOf(out[i])
+		if val.Kind() != reflect.Ptr || !val.IsNil() {
+			break
+		}
+		tailIdx = i
+	}
+	return out[:tailIdx]
 }
 
-func (m mergedColumnIndices) len(colIdx int) int {
-	return len(m[colIdx]) + 1
+func objIsSlice(in interface{}) bool {
+	if in == nil {
+		return false
+	}
+	k := reflect.TypeOf(in).Kind()
+	return k == reflect.Slice || k == reflect.Array
 }
 
-func (m mergedColumnIndices) safeAppend(colIdx, otherColIdx int) {
-	// map
-	if m[colIdx] == nil {
-		m[colIdx] = make(map[int]bool)
+func getSortedKeys(input map[int]map[int]int) ([]int, map[int][]int) {
+	keys := make([]int, 0, len(input))
+	subkeysMap := make(map[int][]int)
+	for key, subMap := range input {
+		keys = append(keys, key)
+		subkeys := make([]int, 0, len(subMap))
+		for subkey := range subMap {
+			subkeys = append(subkeys, subkey)
+		}
+		sort.Ints(subkeys)
+		subkeysMap[key] = subkeys
 	}
-	m[colIdx][otherColIdx] = true
-
-	// reverse map
-	if m[otherColIdx] == nil {
-		m[otherColIdx] = make(map[int]bool)
-	}
-	m[otherColIdx][colIdx] = true
+	sort.Ints(keys)
+	return keys, subkeysMap
 }
