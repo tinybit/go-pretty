@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/tinybit/go-pretty/v6/text"
 )
 
 const (

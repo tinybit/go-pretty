@@ -9,7 +9,7 @@ package main
 import (
     "os"
 
-    "github.com/jedib0t/go-pretty/v6/table"
+    "github.com/tinybit/go-pretty/v6/table"
 )
 
 func main() {

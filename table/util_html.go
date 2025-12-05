@@ -3,7 +3,7 @@ package table
 import (
 	"strings"
 
-	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/tinybit/go-pretty/v6/text"
 )
 
 // convertEscSequencesToSpans converts ANSI escape sequences to HTML <span> tags with CSS classes.

@@ -1,5 +1,5 @@
 # Text
-[![Go Reference](https://pkg.go.dev/badge/github.com/jedib0t/go-pretty/v6/text.svg)](https://pkg.go.dev/github.com/jedib0t/go-pretty/v6/text)
+[![Go Reference](https://pkg.go.dev/badge/github.com/tinybit/go-pretty/v6/text.svg)](https://pkg.go.dev/github.com/tinybit/go-pretty/v6/text)
 
 Package with utility functions to manipulate strings/text with full support for
 ANSI escape sequences (colors, formatting, etc.).

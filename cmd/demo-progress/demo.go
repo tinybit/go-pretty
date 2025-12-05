@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jedib0t/go-pretty/v6/progress"
-	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/tinybit/go-pretty/v6/progress"
+	"github.com/tinybit/go-pretty/v6/text"
 )
 
 var (

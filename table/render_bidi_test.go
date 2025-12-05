@@ -3,7 +3,7 @@ package table
 import (
 	"testing"
 
-	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/tinybit/go-pretty/v6/text"
 )
 
 func TestTable_Render_BiDiText(t *testing.T) {

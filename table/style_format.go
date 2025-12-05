@@ -1,6 +1,6 @@
 package table
 
-import "github.com/jedib0t/go-pretty/v6/text"
+import "github.com/tinybit/go-pretty/v6/text"
 
 // FormatOptions defines the text-formatting to perform on parts of the Table.
 type FormatOptions struct {

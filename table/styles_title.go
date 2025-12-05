@@ -1,6 +1,6 @@
 package table
 
-import "github.com/jedib0t/go-pretty/v6/text"
+import "github.com/tinybit/go-pretty/v6/text"
 
 // TitleOptions defines the way the title text is to be rendered.
 type TitleOptions struct {

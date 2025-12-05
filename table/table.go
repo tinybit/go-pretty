@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/tinybit/go-pretty/v6/text"
 )
 
 // Table helps print a 2-dimensional array in a human-readable pretty-table.
